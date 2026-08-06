@@ -1,0 +1,10 @@
+openstack-mcp-server
+
+.vscode/
+.idea/
+.DS_Store
+
+*.log
+*.out
+
+*.bak
