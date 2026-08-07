@@ -19,6 +19,8 @@ func main() {
 
 	tools.RegisterInstanceTools(server)
 	tools.RegisterNetworkTools(server)
+	tools.RegisterImageTools(server)
+	tools.RegisterFlavorTools(server)
 
 	if err := server.Run(
 		context.Background(),

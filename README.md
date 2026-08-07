@@ -17,6 +17,12 @@ Currently implemented tools:
 - `list_networks`
   - List available OpenStack networks.
 
+- `list_images`
+  - List available OpenStack images.
+
+- `list_flavors`
+  - List available OpenStack flavors.
+
 ## Requirements
 
 - Go 1.24+
@@ -75,9 +81,13 @@ npx @modelcontextprotocol/inspector ./openstack-mcp-server
 │       └── main.go
 ├── internal/
 │   ├── openstack/
+│   │   ├── flavors.go
+│   │   ├── images.go
 │   │   ├── instances.go
 │   │   └── networks.go
 │   └── tools/
+│       ├── flavors.go
+│       ├── images.go
 │       ├── instances.go
 │       └── networks.go
 ├── scripts/
