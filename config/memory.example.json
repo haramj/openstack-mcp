@@ -1,0 +1,14 @@
+{
+  "default_image": "RCP Ubuntu 22.04",
+  "default_flavor": "m1.small",
+  "default_network": "demo-net",
+  "delete_requires_confirm_name": true,
+  "protected_instance_patterns": [
+    "prod-*",
+    "*-prod",
+    "production-*"
+  ],
+  "notes": [
+    "Do not store secrets in this file."
+  ]
+}

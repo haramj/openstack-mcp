@@ -40,6 +40,22 @@ Administrator tools:
   - Delete an instance by name.
   - Requires `confirm_name` to exactly match `name` before deletion.
 
+Agent workflow tools:
+
+- `get_agent_memory`
+  - Read remembered OpenStack agent defaults and policy.
+
+- `plan_instance_operation`
+  - Plan the MCP tool and arguments for an instance operation before execution.
+  - Applies remembered defaults for create requests.
+  - Blocks risky operations against protected instance patterns.
+  - This operation is read-only and does not call OpenStack.
+
+- `record_agent_memory`
+  - Update non-secret operational memory such as default image/flavor/network
+    and protected instance patterns.
+  - This modifies local MCP memory and should use write approval.
+
 For Codex, keep read-only tools auto-approved and run administrator tools with
 write approval enabled. A typical MCP policy is:
 
@@ -77,6 +93,74 @@ Example event:
 
 If `delete_instance` is called without an exact `confirm_name` match, the server
 records a `rejected` audit event and does not call OpenStack.
+
+## Memory and Planning
+
+The server can remember non-secret operational defaults and safety rules. The
+default memory path is:
+
+```text
+~/.config/openstack-mcp/memory.json
+```
+
+Create it from the example on the controller:
+
+```bash
+mkdir -p ~/.config/openstack-mcp
+cp config/memory.example.json ~/.config/openstack-mcp/memory.json
+chmod 600 ~/.config/openstack-mcp/memory.json
+```
+
+Override the path with:
+
+```bash
+OPENSTACK_MCP_MEMORY_FILE=/path/to/memory.json ./scripts/run-mcp-server.sh
+```
+
+The planner uses this memory before recommending write tools. For example, a
+create request without image/flavor/network will be planned with remembered
+defaults such as `RCP Ubuntu 22.04`, `m1.small`, and `demo-net`. A destructive
+request against an instance matching a protected pattern such as `prod-*` is
+blocked at the planning step.
+
+Use `plan_instance_operation` before write tools in agent workflows:
+
+```json
+{
+  "operation": "create",
+  "name": "dev-box"
+}
+```
+
+Example result:
+
+```json
+{
+  "recommended_tool": "create_instance",
+  "arguments": {
+    "name": "dev-box",
+    "image": "RCP Ubuntu 22.04",
+    "flavor": "m1.small",
+    "network": "demo-net"
+  },
+  "requires_approval": true,
+  "blocked": false
+}
+```
+
+## Evaluation
+
+Planner behavior is covered by deterministic evaluation tests in
+`internal/agent/planner_test.go`. These cases verify that remembered defaults are
+applied, deletes require exact confirmation, protected instances are blocked
+for risky lifecycle operations, and restorative lifecycle operations can still
+be planned.
+
+Run:
+
+```bash
+go test ./...
+```
 
 ## Requirements
 
@@ -185,6 +269,9 @@ Use the Tools tab to test:
 - `list_networks`
 - `list_images`
 - `list_flavors`
+- `get_agent_memory`
+- `plan_instance_operation` with `{ "operation": "create", "name": "demo" }`
+- `record_agent_memory` with `{ "default_network": "demo-net", "note": "demo-net is the default network for RCP test instances" }`
 - `admin_instance_action` with `{ "name": "test", "action": "reboot", "reboot_type": "soft" }`
 - `create_instance` with `{ "name": "demo", "image": "RCP Ubuntu 22.04", "flavor": "m1.small", "network": "demo-net" }`
 - `delete_instance` with `{ "name": "demo", "confirm_name": "demo" }`

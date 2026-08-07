@@ -17,6 +17,7 @@ func main() {
 		nil,
 	)
 
+	tools.RegisterAgentTools(server)
 	tools.RegisterInstanceTools(server)
 	tools.RegisterNetworkTools(server)
 	tools.RegisterImageTools(server)
