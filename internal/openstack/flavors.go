@@ -2,9 +2,6 @@ package openstack
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"os/exec"
 	"time"
 )
 
@@ -25,37 +22,17 @@ type rawFlavor struct {
 }
 
 func ListFlavors(ctx context.Context) ([]Flavor, error) {
-	commandCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(
-		commandCtx,
-		"openstack",
+	var rawFlavors []rawFlavor
+	if err := runOpenStackJSON(
+		ctx,
+		20*time.Second,
+		&rawFlavors,
 		"flavor",
 		"list",
 		"-f",
 		"json",
-	)
-
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		if commandCtx.Err() == context.DeadlineExceeded {
-			return nil, fmt.Errorf("openstack command timed out")
-		}
-
-		return nil, fmt.Errorf(
-			"openstack flavor list failed: %w: %s",
-			err,
-			string(output),
-		)
-	}
-
-	var rawFlavors []rawFlavor
-	if err := json.Unmarshal(output, &rawFlavors); err != nil {
-		return nil, fmt.Errorf(
-			"failed to decode OpenStack flavor list output: %w",
-			err,
-		)
+	); err != nil {
+		return nil, err
 	}
 
 	flavors := make([]Flavor, 0, len(rawFlavors))

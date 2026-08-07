@@ -17,7 +17,8 @@ func RegisterFlavorTools(server *mcp.Server) {
 	mcp.AddTool(
 		server,
 		&mcp.Tool{
-			Name: "list_flavors",
+			Name:        "list_flavors",
+			Annotations: readOnlyAnnotations("List Flavors"),
 			Description: "List OpenStack flavors with their IDs, names, RAM, disk, and vCPU counts. " +
 				"This operation is read-only.",
 		},

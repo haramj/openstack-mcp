@@ -17,7 +17,8 @@ func RegisterImageTools(server *mcp.Server) {
 	mcp.AddTool(
 		server,
 		&mcp.Tool{
-			Name: "list_images",
+			Name:        "list_images",
+			Annotations: readOnlyAnnotations("List Images"),
 			Description: "List OpenStack images with their IDs, names, and statuses. " +
 				"This operation is read-only.",
 		},

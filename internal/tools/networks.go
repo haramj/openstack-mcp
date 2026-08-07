@@ -18,6 +18,7 @@ func RegisterNetworkTools(server *mcp.Server) {
 		server,
 		&mcp.Tool{
 			Name:        "list_networks",
+			Annotations: readOnlyAnnotations("List Networks"),
 			Description: "List OpenStack networks with their IDs and names. This operation is read-only.",
 		},
 		func(

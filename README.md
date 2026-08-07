@@ -23,6 +23,33 @@ Currently implemented tools:
 - `list_flavors`
   - List available OpenStack flavors.
 
+Administrator tools:
+
+- `admin_instance_action`
+  - Run lifecycle actions on an instance: `start`, `stop`, `reboot`,
+    `pause`, `unpause`, `suspend`, `resume`, `shelve`, `unshelve`, `lock`,
+    or `unlock`.
+  - For reboot, pass `reboot_type` as `soft` or `hard`.
+
+- `create_instance`
+  - Create a new instance from an image, flavor, and network.
+  - Optional fields: `key_name`, `security_groups`, and `no_wait`.
+  - By default, the tool waits for OpenStack to finish building the instance.
+
+- `delete_instance`
+  - Delete an instance by name.
+  - Requires `confirm_name` to exactly match `name` before deletion.
+
+For Codex, keep read-only tools auto-approved and run administrator tools with
+write approval enabled. A typical MCP policy is:
+
+```toml
+default_tools_approval_mode = "writes"
+
+[mcp_servers.openstack.tools.list_instances]
+approval_mode = "approve"
+```
+
 ## Requirements
 
 - Go 1.24+
@@ -130,6 +157,9 @@ Use the Tools tab to test:
 - `list_networks`
 - `list_images`
 - `list_flavors`
+- `admin_instance_action` with `{ "name": "test", "action": "reboot", "reboot_type": "soft" }`
+- `create_instance` with `{ "name": "demo", "image": "RCP Ubuntu 22.04", "flavor": "m1.small", "network": "demo-net" }`
+- `delete_instance` with `{ "name": "demo", "confirm_name": "demo" }`
 
 ## Project Structure
 
