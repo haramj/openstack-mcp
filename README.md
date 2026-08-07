@@ -50,6 +50,34 @@ default_tools_approval_mode = "writes"
 approval_mode = "approve"
 ```
 
+## Audit Logging
+
+Administrator tools append JSONL audit events for every OpenStack state-changing
+operation. The log records the operation, target instance, OpenStack command
+arguments, success/failure status, and duration. Command output and OpenStack
+credentials are not written to the audit log.
+
+The default audit path is:
+
+```text
+~/.local/state/openstack-mcp/audit.jsonl
+```
+
+Override it with:
+
+```bash
+OPENSTACK_MCP_AUDIT_LOG=/path/to/audit.jsonl ./scripts/run-mcp-server.sh
+```
+
+Example event:
+
+```json
+{"timestamp":"2026-08-07T03:00:00Z","source":"openstack-mcp","operation":"delete_instance","target":"demo","destructive":true,"openstack_args":["server","delete","demo"],"status":"success","duration_ms":912}
+```
+
+If `delete_instance` is called without an exact `confirm_name` match, the server
+records a `rejected` audit event and does not call OpenStack.
+
 ## Requirements
 
 - Go 1.24+

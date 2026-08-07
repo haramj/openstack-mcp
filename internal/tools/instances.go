@@ -153,6 +153,12 @@ func RegisterInstanceTools(server *mcp.Server) {
 			input DeleteInstanceInput,
 		) (*mcp.CallToolResult, *openstack.DeleteInstanceResult, error) {
 			if input.Name != input.ConfirmName {
+				openstack.RecordRejectedAudit(
+					"delete_instance",
+					input.Name,
+					true,
+					"confirm_name must exactly match name before deleting an instance",
+				)
 				return nil, nil, &confirmationError{
 					message: "confirm_name must exactly match name before deleting an instance",
 				}

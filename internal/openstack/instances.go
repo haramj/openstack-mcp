@@ -154,7 +154,14 @@ func RunInstanceAction(ctx context.Context, name string, action InstanceAction, 
 		return nil, fmt.Errorf("unsupported action %q", action)
 	}
 
-	if _, err := runOpenStackCommand(ctx, 60*time.Second, args...); err != nil {
+	if _, err := runAuditedOpenStackCommand(
+		ctx,
+		60*time.Second,
+		"admin_instance_action:"+string(action),
+		name,
+		true,
+		args...,
+	); err != nil {
 		return nil, err
 	}
 
@@ -206,7 +213,15 @@ func CreateInstance(ctx context.Context, opts CreateInstanceOptions) (*CreatedIn
 	args = append(args, opts.Name)
 
 	raw := map[string]any{}
-	if err := runOpenStackJSON(ctx, 5*time.Minute, &raw, args...); err != nil {
+	if err := runAuditedOpenStackJSON(
+		ctx,
+		5*time.Minute,
+		&raw,
+		"create_instance",
+		opts.Name,
+		false,
+		args...,
+	); err != nil {
 		return nil, err
 	}
 
@@ -233,7 +248,16 @@ func DeleteInstance(ctx context.Context, name string) (*DeleteInstanceResult, er
 		return nil, fmt.Errorf("name is required")
 	}
 
-	if _, err := runOpenStackCommand(ctx, 60*time.Second, "server", "delete", name); err != nil {
+	if _, err := runAuditedOpenStackCommand(
+		ctx,
+		60*time.Second,
+		"delete_instance",
+		name,
+		true,
+		"server",
+		"delete",
+		name,
+	); err != nil {
 		return nil, err
 	}
 
