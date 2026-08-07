@@ -51,6 +51,12 @@ Agent workflow tools:
   - Blocks risky operations against protected instance patterns.
   - This operation is read-only and does not call OpenStack.
 
+- `summarize_agent_activity`
+  - Summarize recent administrator MCP audit activity.
+  - Groups successful, failed, and rejected work.
+  - Highlights destructive operations and events that need attention.
+  - This operation is read-only and does not call OpenStack.
+
 - `record_agent_memory`
   - Update non-secret operational memory such as default image/flavor/network
     and protected instance patterns.
@@ -93,6 +99,31 @@ Example event:
 
 If `delete_instance` is called without an exact `confirm_name` match, the server
 records a `rejected` audit event and does not call OpenStack.
+
+Use `summarize_agent_activity` to brief a human on recent MCP administrator
+work:
+
+```json
+{
+  "since_hours": 12,
+  "limit": 20
+}
+```
+
+This supports an operator workflow such as: "When I start work, summarize what
+the OpenStack agent did overnight and highlight failed, rejected, or destructive
+operations."
+
+### OpenStack-wide Event Briefing
+
+The audit log covers actions performed through this MCP server. It does not
+automatically include every OpenStack event that happened outside MCP.
+
+To brief all overnight OpenStack activity, the server would need an additional
+event source such as Nova instance events, OpenStack service logs, Telemetry
+services, audit middleware, or the OpenStack notification bus. The current MCP
+design keeps that as a future read-only event ingestion layer, separate from the
+administrator write tools.
 
 ## Memory and Planning
 
@@ -271,6 +302,7 @@ Use the Tools tab to test:
 - `list_flavors`
 - `get_agent_memory`
 - `plan_instance_operation` with `{ "operation": "create", "name": "demo" }`
+- `summarize_agent_activity` with `{ "since_hours": 12, "limit": 20 }`
 - `record_agent_memory` with `{ "default_network": "demo-net", "note": "demo-net is the default network for RCP test instances" }`
 - `admin_instance_action` with `{ "name": "test", "action": "reboot", "reboot_type": "soft" }`
 - `create_instance` with `{ "name": "demo", "image": "RCP Ubuntu 22.04", "flavor": "m1.small", "network": "demo-net" }`

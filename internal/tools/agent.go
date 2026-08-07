@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/haramj/openstack-mcp-server/internal/agent"
+	"github.com/haramj/openstack-mcp-server/internal/openstack"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -27,6 +28,11 @@ type RecordAgentMemoryInput struct {
 	DeleteRequiresConfirmName *bool    `json:"delete_requires_confirm_name,omitempty" jsonschema:"Whether delete_instance must require exact confirm_name"`
 	ProtectedInstancePatterns []string `json:"protected_instance_patterns,omitempty" jsonschema:"Glob patterns for instances that planner should protect from risky operations"`
 	Note                      string   `json:"note,omitempty" jsonschema:"Free-form operational note to remember. Do not store secrets."`
+}
+
+type SummarizeAgentActivityInput struct {
+	SinceHours int `json:"since_hours,omitempty" jsonschema:"How many hours of audit log activity to summarize. Defaults to 12."`
+	Limit      int `json:"limit,omitempty" jsonschema:"Maximum number of recent audit events to include. Defaults to 20."`
 }
 
 func RegisterAgentTools(server *mcp.Server) {
@@ -108,6 +114,30 @@ func RegisterAgentTools(server *mcp.Server) {
 			}
 
 			return nil, &memory, nil
+		},
+	)
+
+	mcp.AddTool(
+		server,
+		&mcp.Tool{
+			Name:        "summarize_agent_activity",
+			Annotations: readOnlyAnnotations("Summarize Agent Activity"),
+			Description: "Summarize recent administrator MCP audit activity, including success/failure/rejected counts, destructive operations, events needing attention, and recommendations. This operation is read-only and does not call OpenStack.",
+		},
+		func(
+			ctx context.Context,
+			request *mcp.CallToolRequest,
+			input SummarizeAgentActivityInput,
+		) (*mcp.CallToolResult, *openstack.ActivitySummary, error) {
+			summary, err := openstack.SummarizeAgentActivity(openstack.ActivitySummaryOptions{
+				SinceHours: input.SinceHours,
+				Limit:      input.Limit,
+			})
+			if err != nil {
+				return nil, nil, err
+			}
+
+			return nil, summary, nil
 		},
 	)
 }
