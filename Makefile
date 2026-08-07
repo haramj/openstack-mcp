@@ -10,10 +10,10 @@ test:
 	go test ./...
 
 build:
-	go build -o openstack-mcp-server .
+	go build -o openstack-mcp-server ./cmd/openstack-mcp-server
 
 run:
-	go run .
+	go run ./cmd/openstack-mcp-server
 
 install: fmt build
 	install -m 755 openstack-mcp-server $(HOME)/.local/bin/openstack-mcp-server

@@ -41,7 +41,7 @@ go mod download
 Build the server.
 
 ```bash
-go build -o openstack-mcp-server .
+make build
 ```
 
 ## Usage
@@ -70,9 +70,20 @@ npx @modelcontextprotocol/inspector ./openstack-mcp-server
 
 ```
 .
+├── cmd/
+│   └── openstack-mcp-server/
+│       └── main.go
+├── internal/
+│   ├── openstack/
+│   │   ├── instances.go
+│   │   └── networks.go
+│   └── tools/
+│       ├── instances.go
+│       └── networks.go
+├── scripts/
 ├── go.mod
 ├── go.sum
-├── main.go
+├── Makefile
 └── README.md
 ```
 
