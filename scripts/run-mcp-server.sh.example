@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+OPENSTACK_VENV="${OPENSTACK_VENV:-/home/return/openstack-venv}"
+OPENSTACK_MCP_OPENRC="${OPENSTACK_MCP_OPENRC:-$HOME/.config/openstack-mcp/openrc}"
+
+if [ -d "$OPENSTACK_VENV/bin" ]; then
+	export PATH="$OPENSTACK_VENV/bin:$PATH"
+	export VIRTUAL_ENV="$OPENSTACK_VENV"
+fi
+
+if [ -f "$OPENSTACK_MCP_OPENRC" ]; then
+	# shellcheck disable=SC1090
+	source "$OPENSTACK_MCP_OPENRC"
+fi
+
+exec ./openstack-mcp-server

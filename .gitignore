@@ -1,4 +1,5 @@
 /openstack-mcp-server
+scripts/run-mcp-server.sh
 
 .vscode/
 .idea/
