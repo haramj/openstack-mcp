@@ -87,6 +87,9 @@ func PlanInstanceOperation(input PlanInput, memory Memory) Plan {
 		block(&plan, fmt.Sprintf("unsupported operation %q", input.Operation))
 	}
 
+	if plan.Blocked {
+		plan.Arguments = map[string]any{}
+	}
 	return plan
 }
 

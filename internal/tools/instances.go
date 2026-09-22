@@ -10,7 +10,7 @@ import (
 type ListInstancesInput struct{}
 
 type GetInstanceInput struct {
-	Name string `json:"name" jsonschema:"Name of the OpenStack instance"`
+	Name string `json:"name" jsonschema:"Name or ID of the OpenStack instance"`
 }
 
 type ListInstancesOutput struct {
@@ -18,7 +18,7 @@ type ListInstancesOutput struct {
 }
 
 type AdminInstanceActionInput struct {
-	Name       string `json:"name" jsonschema:"Name of the OpenStack instance"`
+	Name       string `json:"name" jsonschema:"Name or ID of the OpenStack instance"`
 	Action     string `json:"action" jsonschema:"Action to run: start, stop, reboot, pause, unpause, suspend, resume, shelve, unshelve, lock, or unlock"`
 	RebootType string `json:"reboot_type,omitempty" jsonschema:"For action=reboot only. Use soft or hard. Defaults to soft."`
 }
@@ -30,7 +30,8 @@ type CreateInstanceInput struct {
 	Network        string   `json:"network" jsonschema:"Network name or ID"`
 	KeyName        string   `json:"key_name,omitempty" jsonschema:"Optional keypair name"`
 	SecurityGroups []string `json:"security_groups,omitempty" jsonschema:"Optional security group names"`
-	NoWait         bool     `json:"no_wait" jsonschema:"If true, return after the create request is accepted instead of waiting for OpenStack to finish building the instance"`
+	Wait           bool     `json:"wait,omitempty" jsonschema:"Opt in to waiting for the instance build. Default false; poll get_instance for status."`
+	NoWait         bool     `json:"no_wait,omitempty" jsonschema:"Deprecated compatibility field. Creation already returns without waiting by default. Cannot be combined with wait=true."`
 }
 
 type DeleteInstanceInput struct {
@@ -69,7 +70,7 @@ func RegisterInstanceTools(server *mcp.Server) {
 		&mcp.Tool{
 			Name:        "get_instance",
 			Annotations: readOnlyAnnotations("Get Instance"),
-			Description: "Get detailed information about an OpenStack instance by name. This operation is read-only.",
+			Description: "Get detailed information about an OpenStack instance by name or ID. This operation is read-only.",
 		},
 		func(
 			ctx context.Context,
@@ -131,6 +132,7 @@ func RegisterInstanceTools(server *mcp.Server) {
 				KeyName:        input.KeyName,
 				SecurityGroups: input.SecurityGroups,
 				NoWait:         input.NoWait,
+				Wait:           input.Wait,
 			})
 			if err != nil {
 				return nil, nil, err
@@ -145,7 +147,7 @@ func RegisterInstanceTools(server *mcp.Server) {
 		&mcp.Tool{
 			Name:        "delete_instance",
 			Annotations: adminAnnotations("Delete Instance", true, false),
-			Description: "Delete an OpenStack instance by name. The confirm_name input must exactly match name. This is destructive and modifies OpenStack state.",
+			Description: "Delete an OpenStack instance by name or ID. The confirm_name input must exactly match name. This is destructive and modifies OpenStack state.",
 		},
 		func(
 			ctx context.Context,

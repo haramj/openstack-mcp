@@ -33,8 +33,8 @@ Administrator tools:
 
 - `create_instance`
   - Create a new instance from an image, flavor, and network.
-  - Optional fields: `key_name`, `security_groups`, and `no_wait`.
-  - By default, the tool waits for OpenStack to finish building the instance.
+  - Optional fields: `key_name`, `security_groups`, and `wait` (default false).
+  - By default, creation returns after the API accepts the request. Poll `get_instance` by returned ID for build status; opt in with `wait=true` to wait for the build. The deprecated `no_wait` field remains accepted, but `no_wait=false` no longer enables waiting. Do not set both `wait` and `no_wait` to true.
 
 - `delete_instance`
   - Delete an instance by name.
@@ -348,3 +348,41 @@ Use the Tools tab to test:
 ## License
 
 MIT License
+
+## Reliability and bounded local state
+
+- `get_instance` accepts a name or ID and uses `server show`; ambiguous names are
+  rejected by OpenStack rather than selecting the first listed server.
+- CLI errors contain a category and exit code, never backend stdout/stderr or a
+  reconstructed command. Audit arguments remain an array; names and arguments
+  can still be sensitive and must not contain credentials. Summaries suppress
+  historical error text written by older versions. Existing log files are not
+  rewritten; operators should handle historical sensitive logs appropriately.
+- Parent context cancellation/deadlines take precedence over the 20-second read,
+  60-second action, and 5-minute creation ceilings. CLI output is capped at 16 MiB;
+  stderr does not corrupt a successful JSON response.
+- Memory retains the latest 100 notes, each at most 8192 bytes. Oversized new notes
+  are rejected. The local file is capped at 2 MiB and replaced atomically with
+  private permissions. Updates within one server process are serialized; use a
+  separate memory path for each independently running server process.
+- `protected_instance_patterns` **replaces** the complete list; omit the field to
+  preserve it, or pass `[]` to clear it. This is planner policy, not an authorization
+  boundary. A blocked plan always returns an empty `arguments` object.
+- Audit summaries scan at most the newest 8 MiB and cache unchanged files. Totals
+  reflect the inspected records only. `truncated`, `malformed_lines`,
+  `scanned_bytes`, and `coverage_warnings` expose limits or damage. Individual
+  records up to 1 MiB are supported. Rotation/truncation invalidates the cache;
+  rotated archives are not included. Output lists are capped at 1000 entries and
+  the requested window at one year. No chronological ordering is assumed.
+
+### Development verification
+
+```bash
+go test -race -cover ./...
+go vet ./...
+go build ./cmd/openstack-mcp-server
+```
+
+Tests use temporary local files, a fake `openstack` executable, and in-memory MCP
+sessions. They do not contact a real OpenStack cloud. Linux/macOS CI runs the same
+checks. Live cloud acceptance remains a separate operator responsibility.
