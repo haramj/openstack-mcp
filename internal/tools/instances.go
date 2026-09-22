@@ -98,6 +98,8 @@ func RegisterInstanceTools(server *mcp.Server) {
 			request *mcp.CallToolRequest,
 			input AdminInstanceActionInput,
 		) (*mcp.CallToolResult, *openstack.InstanceActionResult, error) {
+			stopProgress := operationProgress(ctx, request)
+			defer stopProgress()
 			result, err := openstack.RunInstanceAction(
 				ctx,
 				input.Name,
@@ -124,6 +126,8 @@ func RegisterInstanceTools(server *mcp.Server) {
 			request *mcp.CallToolRequest,
 			input CreateInstanceInput,
 		) (*mcp.CallToolResult, *openstack.CreatedInstance, error) {
+			stopProgress := operationProgress(ctx, request)
+			defer stopProgress()
 			result, err := openstack.CreateInstance(ctx, openstack.CreateInstanceOptions{
 				Name:           input.Name,
 				Image:          input.Image,
@@ -166,6 +170,8 @@ func RegisterInstanceTools(server *mcp.Server) {
 				}
 			}
 
+			stopProgress := operationProgress(ctx, request)
+			defer stopProgress()
 			result, err := openstack.DeleteInstance(ctx, input.Name)
 			if err != nil {
 				return nil, nil, err

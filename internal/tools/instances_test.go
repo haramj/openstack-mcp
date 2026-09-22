@@ -14,6 +14,8 @@ func testSession(t *testing.T) *mcp.ClientSession {
 	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil)
 	RegisterInstanceTools(server)
 	RegisterAgentTools(server)
+	RegisterResources(server)
+	RegisterPrompts(server)
 	st, ct := mcp.NewInMemoryTransports()
 	ss, err := server.Connect(ctx, st, nil)
 	if err != nil {
