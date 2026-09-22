@@ -1,12 +1,14 @@
 package openstack
 
 import (
-	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 	"time"
 )
 
@@ -37,6 +39,10 @@ type ActivitySummary struct {
 	RecentEvents      []AuditEvent   `json:"recent_events"`
 	NeedsAttention    []AuditEvent   `json:"needs_attention"`
 	Recommendations   []string       `json:"recommendations"`
+	CoverageWarnings  []string       `json:"coverage_warnings,omitempty"`
+	MalformedLines    int            `json:"malformed_lines"`
+	ScannedBytes      int64          `json:"scanned_bytes"`
+	Truncated         bool           `json:"truncated"`
 	AuditLogPath      string         `json:"audit_log_path"`
 }
 
@@ -101,6 +107,12 @@ func SummarizeAgentActivity(options ActivitySummaryOptions) (*ActivitySummary, e
 		limit = 20
 	}
 
+	if sinceHours > 24*365 {
+		sinceHours = 24 * 365
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
 	since := now.Add(-time.Duration(sinceHours) * time.Hour)
 	summary := &ActivitySummary{
 		Since:           since.Format(time.RFC3339Nano),
@@ -110,7 +122,16 @@ func SummarizeAgentActivity(options ActivitySummaryOptions) (*ActivitySummary, e
 		AuditLogPath:    auditLogPath(),
 	}
 
-	events, err := readAuditEventsSince(since)
+	events, coverage, err := readAuditWindow(since, now)
+	summary.MalformedLines = coverage.Malformed
+	summary.ScannedBytes = coverage.Bytes
+	summary.Truncated = coverage.Truncated
+	if coverage.Truncated {
+		summary.CoverageWarnings = append(summary.CoverageWarnings, "audit scan limited to newest 8 MiB; totals cover only observed records")
+	}
+	if coverage.Malformed > 0 {
+		summary.CoverageWarnings = append(summary.CoverageWarnings, "malformed or oversized audit records were skipped")
+	}
 	if err != nil {
 		if os.IsNotExist(err) {
 			summary.Recommendations = append(summary.Recommendations, "no audit log exists yet; run an administrator MCP tool to start recording activity")
@@ -121,7 +142,9 @@ func SummarizeAgentActivity(options ActivitySummaryOptions) (*ActivitySummary, e
 	}
 
 	sort.SliceStable(events, func(i, j int) bool {
-		return events[i].Timestamp < events[j].Timestamp
+		a, _ := time.Parse(time.RFC3339Nano, events[i].Timestamp)
+		b, _ := time.Parse(time.RFC3339Nano, events[j].Timestamp)
+		return a.Before(b)
 	})
 
 	for _, event := range events {
@@ -142,6 +165,9 @@ func SummarizeAgentActivity(options ActivitySummaryOptions) (*ActivitySummary, e
 		summary.RecentEvents = append(summary.RecentEvents, events...)
 	}
 
+	if len(summary.NeedsAttention) > limit {
+		summary.NeedsAttention = summary.NeedsAttention[len(summary.NeedsAttention)-limit:]
+	}
 	if summary.TotalEvents == 0 {
 		summary.Recommendations = append(summary.Recommendations, "no administrator MCP activity was recorded in this window")
 		return summary, nil
@@ -159,36 +185,105 @@ func SummarizeAgentActivity(options ActivitySummaryOptions) (*ActivitySummary, e
 	return summary, nil
 }
 
+const maxAuditScan = 8 << 20
+const maxAuditLine = 1 << 20
+
+type auditCoverage struct {
+	Bytes     int64
+	Truncated bool
+	Malformed int
+}
+
+var auditCache struct {
+	sync.Mutex
+	path     string
+	info     os.FileInfo
+	events   []AuditEvent
+	coverage auditCoverage
+}
+
 func readAuditEventsSince(since time.Time) ([]AuditEvent, error) {
-	file, err := os.Open(auditLogPath())
+	events, _, err := readAuditWindow(since, time.Now().UTC())
+	return events, err
+}
+
+// A bounded tail avoids unbounded historical scans. It never assumes timestamps
+// are monotonic: concurrent commands and imported records can be out of order.
+func readAuditWindow(since, until time.Time) ([]AuditEvent, auditCoverage, error) {
+	auditCache.Lock()
+	defer auditCache.Unlock()
+	path := auditLogPath()
+	file, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, auditCoverage{}, err
 	}
-	defer func() { _ = file.Close() }()
-
-	var events []AuditEvent
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		var event AuditEvent
-		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
-			continue
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return nil, auditCoverage{}, err
+	}
+	if auditCache.path != path || auditCache.info == nil || !os.SameFile(info, auditCache.info) || info.Size() != auditCache.info.Size() || !info.ModTime().Equal(auditCache.info.ModTime()) {
+		coverage := auditCoverage{}
+		offset := int64(0)
+		if info.Size() > maxAuditScan {
+			offset = info.Size() - maxAuditScan
+			coverage.Truncated = true
 		}
-
-		timestamp, err := time.Parse(time.RFC3339Nano, event.Timestamp)
+		// Read one extra byte to decide whether the tail starts on a complete line.
+		start := offset
+		if start > 0 {
+			start--
+		}
+		if _, err = file.Seek(start, io.SeekStart); err != nil {
+			return nil, coverage, err
+		}
+		data, err := io.ReadAll(io.LimitReader(file, maxAuditScan+1))
 		if err != nil {
-			continue
+			return nil, coverage, err
 		}
-		if timestamp.Before(since) {
-			continue
+		coverage.Bytes = int64(len(data))
+		if offset > 0 {
+			if data[0] == '\n' {
+				data = data[1:]
+			} else if i := bytes.IndexByte(data, '\n'); i >= 0 {
+				data = data[i+1:]
+			} else {
+				data = nil
+			}
 		}
-
-		events = append(events, event)
+		events := []AuditEvent{}
+		for _, line := range bytes.Split(data, []byte{'\n'}) {
+			if len(line) == 0 {
+				continue
+			}
+			var event AuditEvent
+			if len(line) > maxAuditLine || json.Unmarshal(line, &event) != nil {
+				coverage.Malformed++
+				continue
+			}
+			if _, err := time.Parse(time.RFC3339Nano, event.Timestamp); err != nil {
+				coverage.Malformed++
+				continue
+			}
+			// Historical versions persisted CLI output here. Never redistribute it.
+			if event.Error != "" {
+				event.Error = "operation failed or rejected; backend details omitted"
+			}
+			events = append(events, event)
+		}
+		auditCache.path = path
+		auditCache.info = info
+		auditCache.events = events
+		auditCache.coverage = coverage
 	}
-	if err := scanner.Err(); err != nil {
-		return nil, err
+	events := []AuditEvent{}
+	for _, event := range auditCache.events {
+		at, _ := time.Parse(time.RFC3339Nano, event.Timestamp)
+		if !at.Before(since) && !at.After(until) {
+			events = append(events, event)
+		}
 	}
-
-	return events, nil
+	return events, auditCache.coverage, nil
 }
 
 func runAuditedOpenStackCommand(
@@ -212,7 +307,7 @@ func runAuditedOpenStackCommand(
 	}
 	if err != nil {
 		event.Status = "failed"
-		event.Error = err.Error()
+		event.Error = "openstack command failed"
 	}
 	writeAuditEvent(event)
 

@@ -2,7 +2,9 @@ package openstack
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -53,19 +55,57 @@ func ListInstances(ctx context.Context) ([]Instance, error) {
 	return instances, nil
 }
 
-func GetInstance(ctx context.Context, name string) (*Instance, error) {
-	instances, err := ListInstances(ctx)
-	if err != nil {
+func GetInstance(ctx context.Context, nameOrID string) (*Instance, error) {
+	if strings.TrimSpace(nameOrID) == "" || strings.HasPrefix(nameOrID, "-") {
+		return nil, fmt.Errorf("a non-option instance name or ID is required")
+	}
+	var raw map[string]json.RawMessage
+	if err := runOpenStackJSON(ctx, 20*time.Second, &raw, "server", "show", nameOrID, "-f", "json"); err != nil {
 		return nil, err
 	}
-
-	for _, instance := range instances {
-		if instance.Name == name {
-			return &instance, nil
+	get := func(keys ...string) string {
+		for _, key := range keys {
+			if v, ok := raw[key]; ok {
+				var text string
+				if json.Unmarshal(v, &text) == nil {
+					return text
+				}
+				var object map[string]any
+				if json.Unmarshal(v, &object) == nil {
+					if name, ok := object["name"].(string); ok {
+						return name
+					}
+					if id, ok := object["id"].(string); ok {
+						return id
+					}
+				}
+			}
+		}
+		return ""
+	}
+	instance := &Instance{ID: get("id", "ID"), Name: get("name", "Name"), Status: get("status", "Status"), Image: get("image", "Image"), Flavor: get("flavor", "Flavor"), Networks: map[string][]string{}}
+	for _, key := range []string{"addresses", "Networks"} {
+		if value, ok := raw[key]; ok {
+			if json.Unmarshal(value, &instance.Networks) != nil {
+				var text string
+				if json.Unmarshal(value, &text) != nil {
+					return nil, fmt.Errorf("unsupported instance address representation")
+				}
+				for _, network := range strings.Split(text, ";") {
+					name, addresses, ok := strings.Cut(strings.TrimSpace(network), "=")
+					if ok {
+						for _, address := range strings.Split(addresses, ",") {
+							instance.Networks[name] = append(instance.Networks[name], strings.TrimSpace(address))
+						}
+					}
+				}
+			}
 		}
 	}
-
-	return nil, fmt.Errorf("instance %q not found", name)
+	if instance.ID == "" {
+		return nil, fmt.Errorf("instance response has no ID")
+	}
+	return instance, nil
 }
 
 type InstanceAction string
@@ -98,6 +138,7 @@ type CreateInstanceOptions struct {
 	Network        string   `json:"network"`
 	KeyName        string   `json:"key_name,omitempty"`
 	SecurityGroups []string `json:"security_groups,omitempty"`
+	Wait           bool     `json:"wait,omitempty"`
 	NoWait         bool     `json:"no_wait"`
 }
 
@@ -199,7 +240,10 @@ func CreateInstance(ctx context.Context, opts CreateInstanceOptions) (*CreatedIn
 		"-f",
 		"json",
 	}
-	if !opts.NoWait {
+	if opts.Wait && opts.NoWait {
+		return nil, fmt.Errorf("wait and no_wait cannot both be true")
+	}
+	if opts.Wait {
 		args = append(args, "--wait")
 	}
 	if opts.KeyName != "" {

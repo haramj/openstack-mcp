@@ -26,8 +26,8 @@ type RecordAgentMemoryInput struct {
 	DefaultFlavor             string   `json:"default_flavor,omitempty" jsonschema:"Remembered default flavor name or ID"`
 	DefaultNetwork            string   `json:"default_network,omitempty" jsonschema:"Remembered default network name or ID"`
 	DeleteRequiresConfirmName *bool    `json:"delete_requires_confirm_name,omitempty" jsonschema:"Whether delete_instance must require exact confirm_name"`
-	ProtectedInstancePatterns []string `json:"protected_instance_patterns,omitempty" jsonschema:"Glob patterns for instances that planner should protect from risky operations"`
-	Note                      string   `json:"note,omitempty" jsonschema:"Free-form operational note to remember. Do not store secrets."`
+	ProtectedInstancePatterns []string `json:"protected_instance_patterns,omitempty" jsonschema:"Replace the complete list of planner protected glob patterns. Omit to preserve; empty array clears."`
+	Note                      string   `json:"note,omitempty" jsonschema:"Non-secret note, at most 8192 bytes. Only the latest 100 notes are retained."`
 }
 
 type SummarizeAgentActivityInput struct {

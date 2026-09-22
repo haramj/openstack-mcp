@@ -2,8 +2,11 @@ package agent
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -49,9 +52,16 @@ func MemoryPath() string {
 	return filepath.Join(home, ".config", "openstack-mcp", "memory.json")
 }
 
-func LoadMemory() (Memory, error) {
+const MaxNotes = 100
+const MaxNoteBytes = 8192
+const maxMemoryBytes = 2 << 20
+
+var memoryMu sync.Mutex
+
+func LoadMemory() (Memory, error) { memoryMu.Lock(); defer memoryMu.Unlock(); return loadMemory() }
+func loadMemory() (Memory, error) {
 	path := MemoryPath()
-	data, err := os.ReadFile(path)
+	file, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return DefaultMemory(), nil
@@ -60,6 +70,14 @@ func LoadMemory() (Memory, error) {
 		return Memory{}, err
 	}
 
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, maxMemoryBytes+1))
+	if err != nil {
+		return Memory{}, err
+	}
+	if len(data) > maxMemoryBytes {
+		return Memory{}, fmt.Errorf("memory exceeds 2 MiB; archive old notes manually")
+	}
 	memory := DefaultMemory()
 	if err := json.Unmarshal(data, &memory); err != nil {
 		return Memory{}, err
@@ -69,6 +87,14 @@ func LoadMemory() (Memory, error) {
 }
 
 func SaveMemory(memory Memory) error {
+	memoryMu.Lock()
+	defer memoryMu.Unlock()
+	return saveMemory(memory)
+}
+func saveMemory(memory Memory) error {
+	if err := validateMemory(memory); err != nil {
+		return err
+	}
 	memory.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
 
 	path := MemoryPath()
@@ -81,12 +107,36 @@ func SaveMemory(memory Memory) error {
 		return err
 	}
 	data = append(data, '\n')
+	if len(data) > maxMemoryBytes {
+		return fmt.Errorf("memory exceeds 2 MiB")
+	}
 
-	return os.WriteFile(path, data, 0o600)
+	file, err := os.CreateTemp(filepath.Dir(path), ".memory-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(file.Name())
+	if _, err = file.Write(data); err != nil {
+		file.Close()
+		return err
+	}
+	if err = file.Sync(); err != nil {
+		file.Close()
+		return err
+	}
+	if err = file.Close(); err != nil {
+		return err
+	}
+	return os.Rename(file.Name(), path)
 }
 
 func UpdateMemory(patch MemoryPatch) (Memory, error) {
-	memory, err := LoadMemory()
+	memoryMu.Lock()
+	defer memoryMu.Unlock()
+	if len(patch.Note) > MaxNoteBytes {
+		return Memory{}, fmt.Errorf("note exceeds %d bytes", MaxNoteBytes)
+	}
+	memory, err := loadMemory()
 	if err != nil {
 		return Memory{}, err
 	}
@@ -103,16 +153,42 @@ func UpdateMemory(patch MemoryPatch) (Memory, error) {
 	if patch.DeleteRequiresConfirmName != nil {
 		memory.DeleteRequiresConfirmName = *patch.DeleteRequiresConfirmName
 	}
-	if len(patch.ProtectedInstancePatterns) > 0 {
+	if patch.ProtectedInstancePatterns != nil {
 		memory.ProtectedInstancePatterns = append([]string(nil), patch.ProtectedInstancePatterns...)
 	}
 	if patch.Note != "" {
 		memory.Notes = append(memory.Notes, patch.Note)
 	}
 
-	if err := SaveMemory(memory); err != nil {
+	if len(memory.Notes) > MaxNotes {
+		memory.Notes = memory.Notes[len(memory.Notes)-MaxNotes:]
+	}
+	memory.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	if err := saveMemory(memory); err != nil {
 		return Memory{}, err
 	}
 
 	return memory, nil
+}
+
+func validateMemory(m Memory) error {
+	if len(m.Notes) > MaxNotes {
+		return fmt.Errorf("memory exceeds %d notes", MaxNotes)
+	}
+	for _, note := range m.Notes {
+		if len(note) > MaxNoteBytes {
+			return fmt.Errorf("note exceeds %d bytes", MaxNoteBytes)
+		}
+	}
+	if len(m.ProtectedInstancePatterns) > 100 {
+		return fmt.Errorf("too many protected patterns")
+	}
+	data, err := json.Marshal(m)
+	if err != nil {
+		return err
+	}
+	if len(data) > maxMemoryBytes {
+		return fmt.Errorf("memory exceeds 2 MiB")
+	}
+	return nil
 }
