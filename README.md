@@ -386,3 +386,16 @@ go build ./cmd/openstack-mcp-server
 Tests use temporary local files, a fake `openstack` executable, and in-memory MCP
 sessions. They do not contact a real OpenStack cloud. Linux/macOS CI runs the same
 checks. Live cloud acceptance remains a separate operator responsibility.
+
+## Resources, prompts, and progress
+
+Clients can read `openstack://memory`, `openstack://audit/summary`,
+`openstack://flavors`, `openstack://images`, and `openstack://networks` alongside
+all existing tools. User-selected prompts cover `provision-instance`,
+`investigate-instance`, `overnight-summary`, and `safe-delete` workflows.
+
+Modifying calls that supply a progress token receive elapsed-wait heartbeats;
+these do not represent build completion percentages. Default creation remains
+non-waiting. See [capability semantics and rollout decisions](docs/mcp-capabilities.md)
+for client behavior, trust boundaries, SSH operation, and the still-open Remote
+HTTP and advanced-interaction proposals.
