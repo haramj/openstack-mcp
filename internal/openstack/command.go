@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/haramj/openstack-mcp-server/internal/scope"
 	"io"
 	"os/exec"
+	"path/filepath"
 	"time"
 )
 
@@ -45,6 +47,10 @@ func runOpenStackCommand(ctx context.Context, timeout time.Duration, args ...str
 	commandCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(commandCtx, "openstack", args...)
+	cmd.Env = scope.Env(ctx)
+	if config, ok := scope.From(ctx); ok {
+		cmd.Dir = filepath.Dir(config.MemoryFile)
+	}
 	// Descendants inheriting stdout must not hold a canceled call indefinitely.
 	cmd.WaitDelay = 100 * time.Millisecond
 	var output boundedOutput
