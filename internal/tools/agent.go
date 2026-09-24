@@ -48,7 +48,7 @@ func RegisterAgentTools(server *mcp.Server) {
 			request *mcp.CallToolRequest,
 			input GetAgentMemoryInput,
 		) (*mcp.CallToolResult, *agent.Memory, error) {
-			memory, err := agent.LoadMemory()
+			memory, err := agent.LoadMemoryContext(ctx)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -69,7 +69,7 @@ func RegisterAgentTools(server *mcp.Server) {
 			request *mcp.CallToolRequest,
 			input PlanInstanceOperationInput,
 		) (*mcp.CallToolResult, *agent.Plan, error) {
-			memory, err := agent.LoadMemory()
+			memory, err := agent.LoadMemoryContext(ctx)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -101,7 +101,10 @@ func RegisterAgentTools(server *mcp.Server) {
 			request *mcp.CallToolRequest,
 			input RecordAgentMemoryInput,
 		) (*mcp.CallToolResult, *agent.Memory, error) {
-			memory, err := agent.UpdateMemory(agent.MemoryPatch{
+			if result, err := confirmInteraction(ctx, request, "memory update"); result != nil || err != nil {
+				return result, nil, err
+			}
+			memory, err := agent.UpdateMemoryContext(ctx, agent.MemoryPatch{
 				DefaultImage:              input.DefaultImage,
 				DefaultFlavor:             input.DefaultFlavor,
 				DefaultNetwork:            input.DefaultNetwork,
@@ -129,7 +132,7 @@ func RegisterAgentTools(server *mcp.Server) {
 			request *mcp.CallToolRequest,
 			input SummarizeAgentActivityInput,
 		) (*mcp.CallToolResult, *openstack.ActivitySummary, error) {
-			summary, err := openstack.SummarizeAgentActivity(openstack.ActivitySummaryOptions{
+			summary, err := openstack.SummarizeAgentActivityContext(ctx, openstack.ActivitySummaryOptions{
 				SinceHours: input.SinceHours,
 				Limit:      input.Limit,
 			})

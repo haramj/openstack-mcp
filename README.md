@@ -12,7 +12,7 @@ Currently implemented tools:
   - List all instances in the current OpenStack project.
 
 - `get_instance`
-  - Get detailed information about an instance by name.
+  - Get detailed information about an instance by name or ID.
 
 - `list_networks`
   - List available OpenStack networks.
@@ -397,5 +397,24 @@ all existing tools. User-selected prompts cover `provision-instance`,
 Modifying calls that supply a progress token receive elapsed-wait heartbeats;
 these do not represent build completion percentages. Default creation remains
 non-waiting. See [capability semantics and rollout decisions](docs/mcp-capabilities.md)
-for client behavior, trust boundaries, SSH operation, and the still-open Remote
-HTTP and advanced-interaction proposals.
+for protocol behavior, trust boundaries, Elicitation, polling events, optional Sampling, and multimodal output.
+
+## Remote HTTPS and advanced interactions
+
+Stdio remains default. Opt-in Streamable HTTP uses TLS 1.3 and pinned client
+certificates, per-principal roles, separate credentials/state, request limits and
+isolated SSE replay. See [remote deployment](docs/remote.md) and the
+[example configuration](examples/remote.example.json). This is mTLS, not an OAuth
+server; clients must support client certificates.
+
+- Required Elicitation adds form confirmation without bypassing authorization.
+- `openstack://events` retains 100 observed transitions, polled every 15 seconds
+  while subscribed. It is not an exhaustive cloud event bus.
+- `analyze_agent_activity` optionally sends aggregate counts to a consenting
+  client's model; raw logs and credentials are excluded.
+- `render_instance_topology` returns text and an optional labeled PNG of observed
+  VM/network membership, with explicit size limits.
+
+The [capability reference](docs/mcp-capabilities.md) documents limits and fallback
+behavior. Follow [live acceptance](docs/live-validation.md) before rollout;
+automated fixture/HTTPS tests do not certify a live cloud deployment.

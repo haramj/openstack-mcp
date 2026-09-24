@@ -155,7 +155,7 @@ type DeleteInstanceResult struct {
 }
 
 func RunInstanceAction(ctx context.Context, name string, action InstanceAction, rebootType string) (*InstanceActionResult, error) {
-	if name == "" {
+	if strings.TrimSpace(name) == "" || strings.HasPrefix(name, "-") {
 		return nil, fmt.Errorf("name is required")
 	}
 
@@ -215,6 +215,12 @@ func RunInstanceAction(ctx context.Context, name string, action InstanceAction, 
 }
 
 func CreateInstance(ctx context.Context, opts CreateInstanceOptions) (*CreatedInstance, error) {
+	for _, value := range append([]string{opts.Name, opts.Image, opts.Flavor, opts.Network, opts.KeyName}, opts.SecurityGroups...) {
+		if strings.HasPrefix(value, "-") {
+			return nil, fmt.Errorf("resource identifiers cannot start with an option prefix")
+		}
+	}
+
 	if opts.Name == "" {
 		return nil, fmt.Errorf("name is required")
 	}
@@ -288,7 +294,7 @@ func CreateInstance(ctx context.Context, opts CreateInstanceOptions) (*CreatedIn
 }
 
 func DeleteInstance(ctx context.Context, name string) (*DeleteInstanceResult, error) {
-	if name == "" {
+	if strings.TrimSpace(name) == "" || strings.HasPrefix(name, "-") {
 		return nil, fmt.Errorf("name is required")
 	}
 

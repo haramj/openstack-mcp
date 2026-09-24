@@ -1,8 +1,10 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/haramj/openstack-mcp-server/internal/scope"
 	"io"
 	"os"
 	"path/filepath"
@@ -58,9 +60,19 @@ const maxMemoryBytes = 2 << 20
 
 var memoryMu sync.Mutex
 
-func LoadMemory() (Memory, error) { memoryMu.Lock(); defer memoryMu.Unlock(); return loadMemory() }
-func loadMemory() (Memory, error) {
-	path := MemoryPath()
+func memoryPath(ctx context.Context) string {
+	if c, ok := scope.From(ctx); ok {
+		return c.MemoryFile
+	}
+	return MemoryPath()
+}
+func LoadMemory() (Memory, error) { return LoadMemoryContext(context.Background()) }
+func LoadMemoryContext(ctx context.Context) (Memory, error) {
+	memoryMu.Lock()
+	defer memoryMu.Unlock()
+	return loadMemory(memoryPath(ctx))
+}
+func loadMemory(path string) (Memory, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -89,15 +101,14 @@ func loadMemory() (Memory, error) {
 func SaveMemory(memory Memory) error {
 	memoryMu.Lock()
 	defer memoryMu.Unlock()
-	return saveMemory(memory)
+	return saveMemory(MemoryPath(), memory)
 }
-func saveMemory(memory Memory) error {
+func saveMemory(path string, memory Memory) error {
 	if err := validateMemory(memory); err != nil {
 		return err
 	}
 	memory.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
 
-	path := MemoryPath()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
@@ -131,12 +142,15 @@ func saveMemory(memory Memory) error {
 }
 
 func UpdateMemory(patch MemoryPatch) (Memory, error) {
+	return UpdateMemoryContext(context.Background(), patch)
+}
+func UpdateMemoryContext(ctx context.Context, patch MemoryPatch) (Memory, error) {
 	memoryMu.Lock()
 	defer memoryMu.Unlock()
 	if len(patch.Note) > MaxNoteBytes {
 		return Memory{}, fmt.Errorf("note exceeds %d bytes", MaxNoteBytes)
 	}
-	memory, err := loadMemory()
+	memory, err := loadMemory(memoryPath(ctx))
 	if err != nil {
 		return Memory{}, err
 	}
@@ -164,7 +178,7 @@ func UpdateMemory(patch MemoryPatch) (Memory, error) {
 		memory.Notes = memory.Notes[len(memory.Notes)-MaxNotes:]
 	}
 	memory.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	if err := saveMemory(memory); err != nil {
+	if err := saveMemory(memoryPath(ctx), memory); err != nil {
 		return Memory{}, err
 	}
 

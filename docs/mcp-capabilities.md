@@ -1,70 +1,81 @@
-# MCP capabilities and rollout decisions
+# MCP capabilities
 
-## Resources and prompts (issue #9)
+## Resources and prompts
 
-Existing tools remain supported. Five read-only resources expose the same current
-local/cloud evidence: `openstack://memory`, `openstack://audit/summary` (12 hours),
-`openstack://images`, `openstack://flavors`, and `openstack://networks`. Read failures
-are errors, never invented empty inventories. These are live reads, not subscriptions
-or immutable snapshots. Clients must re-read when freshness matters. Reading local
-memory may expose operator notes; use only trusted local clients.
+Existing tools remain supported. Read-only resources expose current local/cloud
+evidence: `openstack://memory`, `openstack://audit/summary` (12 hours),
+`openstack://images`, `openstack://flavors`, `openstack://networks`, and bounded
+polling history at `openstack://events`. Failures stay explicit. Except the event
+history, these are live reads rather than immutable snapshots. Authorized clients
+can read operator notes stored in memory.
 
-Four user-selected prompts provide guidance, not autonomous execution:
-`provision-instance`, `investigate-instance`, `overnight-summary`, and `safe-delete`.
-All except the summary require `name`. Prompts treat returned logs and names as
-untrusted data, preserve approval steps, and do not replace authorization.
+User-selected prompts guide `provision-instance`, `investigate-instance`,
+`overnight-summary`, and `safe-delete`; all except summary require `name`. Prompts
+execute nothing themselves. Names, notes and logs are untrusted data, and prompt
+approval steps do not replace server or cloud authorization.
 
-## Progress (first part of issue #11)
+## Progress
 
-Modifying tool calls with an MCP progress token receive an initial notification
-and a heartbeat every two seconds while the CLI is running. The monotonically
-increasing value measures elapsed waiting, **not** a build completion percentage.
-No token means no notifications. The final tool response determines success/failure;
-notification failure never retries a cloud operation. Context cancellation stops
-the heartbeat. Default creation already returns without waiting; use `wait=true`
-only when an explicitly waiting call is desired.
+Modifying calls with a progress token receive an initial notification and a
+heartbeat every two seconds while the CLI runs. Values measure elapsed waiting,
+not build completion percentage. No token means no notifications. The final result
+determines success/failure; notification failure never retries a cloud operation.
+Cancellation stops heartbeats. Creation defaults to non-waiting submission;
+`wait=true` explicitly waits for the build.
 
-## Remote HTTP decision (issue #10: still open)
+## Elicitation
 
-Keep stdio as the only transport for this release. Adding a listener around the
-existing shared credential, memory and audit context would create an authorization
-boundary the implementation does not have. There is no supported unauthenticated
-HTTP mode. This is a deferral, not an implementation of Remote MCP.
+Use `OPENSTACK_MCP_REQUIRE_ELICITATION=1` for stdio or per-principal
+`require_elicitation=true` for HTTPS. Modifying calls request a boolean form before
+execution; unsupported clients and declined/canceled responses fail closed.
+The SDK's multi-round-trip InputRequests flow supports the current protocol and
+its legacy bridge. Responses are HMAC-bound to principal, tool, arguments and a
+one-minute expiry; remote destructive calls also bind the resolved target.
+A client can manufacture answers, so this is not authentication or proof of human
+approval. Roles and protected-target checks still apply. Repeating a complete tool
+call can repeat an operation; callers need their own retry/idempotency policy.
 
-For remote operation today, launch the stdio process over SSH, for example:
+## Events and replay
 
-```bash
-ssh -T operator@controller /absolute/path/to/openstack-mcp-wrapper
-```
+Subscribe to `openstack://events` and re-read it after resource-update notifications.
+The server polls instance inventory every 15 seconds while subscribed. Initial and
+recovered observations produce `baseline`; subsequent differences produce
+`appeared`, `status_changed`, and `no_longer_observed`. Disappearance is not proof
+of deletion. Failed/oversized observations produce coverage gaps. The bound is
+2,000 instances with bounded identifier/status fields.
 
-The operator-owned wrapper must configure its authorized OpenStack environment
-and `exec` the server without emitting banners on stdout. SSH host verification
-and account access remain required; no MCP ports need forwarding. Each independent
-server process should use separate memory and audit paths.
+The last 100 events have increasing sequence numbers and UTC observation times.
+Polling misses short transitions; history resets on restart. Sequence gaps require
+a fresh snapshot. This is not an OpenStack notification-bus connection or exhaustive
+cloud audit. HTTPS uses the SDK SSE EventStore with 1 MiB per principal for bounded
+transport replay. Purged cursors require resynchronization. Principal subscriptions,
+buffers and sessions are separate. The newest protocol's subscriptions/listen is a
+long-lived stream: run subscription handling alongside normal client requests.
 
-Before adding HTTP, agree on and test:
+## Optional sampling
 
-1. Authenticated identity (OAuth or mTLS) with issuer/audience validation, TLS,
-   origin checks, credential rotation/revocation, and request limits.
-2. Explicit read/write/admin roles enforced at every tool/resource boundary.
-3. Per-principal OpenStack project credentials, memory, audit and event isolation;
-   an untrusted client cannot choose another principal's storage or project.
-4. Deny-by-default authorization, auditable identity without credential leakage,
-   rate limits, cancellation, shutdown, and session expiry.
-5. Integration tests for unauthenticated/expired identities, cross-project access,
-   denied mutations, browser origin attacks, and token redaction.
+`analyze_agent_activity` returns aggregate counts and a resource link. Sampling
+requires both call-level `allow_sampling=true` and server permission:
+`OPENSTACK_MCP_ALLOW_SAMPLING=1` for stdio or per-principal `allow_sampling=true`.
+Only total/failed/rejected/destructive counts and truncation/malformed indicators
+are sent. Raw events, names, notes, paths and credentials are excluded. Requests ask
+for no additional context and at most 512 tokens; the client controls model/provider
+policy. The signed continuation retains the exact counts used for that request.
+Returned advice is untrusted and never executed. Without consent/capability, numeric
+output remains available. Sampling is deprecated in the current SDK protocol and
+optional; client/protocol errors may require retrying without it.
 
-## Advanced interactions (remainder of issue #11: still open)
+## Multimodal output
 
-Elicitation may improve user experience but is **not proof of human approval**:
-clients can synthesize answers. It must not bypass protected-target checks or
-replace a server-side authorization policy. Before implementation, specify opt-in
-behavior, denied/unsupported/time-out behavior, and the trust boundary.
+`render_instance_topology` always returns JSON text of observed VM/network membership
+and an events link. `include_image=true` adds a labeled PNG, capped at 30 instances
+and 30 networks, with omissions reported in text. Text remains usable by clients
+without images. Membership does not establish traffic flow, routing, reachability
+or health. No audio, screenshots or external rendering service is used.
 
-Events require authorized, per-project subscriptions, bounded retention/replay,
-backpressure, reconnect semantics and a real event source. A local heartbeat is
-not an OpenStack state-change event. Sampling must remain optional and must never
-receive credentials/private logs without an explicit data-sharing policy.
-Multimodal output needs a concrete use case and a text fallback. No Events,
-Sampling, Elicitation, image/audio output or cloud notification bus is claimed by
-this release. These proposals remain open for scoped implementation and review.
+## Deployment and verification
+
+Stdio is default. [Remote HTTPS](remote.md) requires mTLS and per-principal policy.
+Tests cover real MCP interactions, form outcomes, numeric-only sampling, PNG decoding,
+subscriptions, cancellation, and generated-certificate HTTPS isolation. Real cloud
+acceptance follows the separate [operator runbook](live-validation.md).

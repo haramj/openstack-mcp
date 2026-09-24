@@ -1,0 +1,17 @@
+{
+  "address": "127.0.0.1:8443",
+  "certificate": "/etc/openstack-mcp/server.crt",
+  "private_key": "/etc/openstack-mcp/server.key",
+  "client_ca": "/etc/openstack-mcp/client-ca.crt",
+  "allowed_hosts": ["localhost:8443"],
+  "principals": [{
+    "name": "lab-reader",
+    "certificate_sha256": "REPLACE_WITH_64_HEX_DIGITS_WITHOUT_COLONS",
+    "role": "viewer",
+    "state_dir": "/var/lib/openstack-mcp/lab-reader",
+    "credentials_file": "/etc/openstack-mcp/lab-reader.credentials.json",
+    "require_elicitation": true,
+    "protected_patterns": ["prod-*", "*-prod", "production-*"],
+    "allow_sampling": false
+  }]
+}

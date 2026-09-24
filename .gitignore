@@ -9,3 +9,10 @@ scripts/run-mcp-server.sh
 *.out
 
 *.bak
+
+# Real operator credentials/state (example templates remain tracked).
+*.key
+*.credentials.json
+remote.json
+audit.jsonl
+memory.json

@@ -16,11 +16,11 @@ import (
 func RegisterResources(server *mcp.Server) {
 	sources := []struct {
 		uri, name string
-		read      func(context.Context) (any, error)
+		read      func(ctx context.Context) (any, error)
 	}{
-		{"openstack://memory", "Agent defaults and planner policy", func(context.Context) (any, error) { return agent.LoadMemory() }},
-		{"openstack://audit/summary", "Recent local MCP activity", func(context.Context) (any, error) {
-			return openstack.SummarizeAgentActivity(openstack.ActivitySummaryOptions{})
+		{"openstack://memory", "Agent defaults and planner policy", func(ctx context.Context) (any, error) { return agent.LoadMemoryContext(ctx) }},
+		{"openstack://audit/summary", "Recent local MCP activity", func(ctx context.Context) (any, error) {
+			return openstack.SummarizeAgentActivityContext(ctx, openstack.ActivitySummaryOptions{})
 		}},
 		{"openstack://flavors", "Available flavors", func(ctx context.Context) (any, error) { return openstack.ListFlavors(ctx) }},
 		{"openstack://images", "Available images", func(ctx context.Context) (any, error) { return openstack.ListImages(ctx) }},

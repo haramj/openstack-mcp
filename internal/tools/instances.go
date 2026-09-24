@@ -98,11 +98,18 @@ func RegisterInstanceTools(server *mcp.Server) {
 			request *mcp.CallToolRequest,
 			input AdminInstanceActionInput,
 		) (*mcp.CallToolResult, *openstack.InstanceActionResult, error) {
+			target, err := authorizedTarget(ctx, input.Name)
+			if err != nil {
+				return nil, nil, err
+			}
+			if result, err := confirmInteraction(ctx, request, "lifecycle action "+input.Action+" on "+target); result != nil || err != nil {
+				return result, nil, err
+			}
 			stopProgress := operationProgress(ctx, request)
 			defer stopProgress()
 			result, err := openstack.RunInstanceAction(
 				ctx,
-				input.Name,
+				target,
 				openstack.InstanceAction(input.Action),
 				input.RebootType,
 			)
@@ -126,6 +133,9 @@ func RegisterInstanceTools(server *mcp.Server) {
 			request *mcp.CallToolRequest,
 			input CreateInstanceInput,
 		) (*mcp.CallToolResult, *openstack.CreatedInstance, error) {
+			if result, err := confirmInteraction(ctx, request, "creation of "+input.Name); result != nil || err != nil {
+				return result, nil, err
+			}
 			stopProgress := operationProgress(ctx, request)
 			defer stopProgress()
 			result, err := openstack.CreateInstance(ctx, openstack.CreateInstanceOptions{
@@ -159,7 +169,7 @@ func RegisterInstanceTools(server *mcp.Server) {
 			input DeleteInstanceInput,
 		) (*mcp.CallToolResult, *openstack.DeleteInstanceResult, error) {
 			if input.Name != input.ConfirmName {
-				openstack.RecordRejectedAudit(
+				openstack.RecordRejectedAuditContext(ctx,
 					"delete_instance",
 					input.Name,
 					true,
@@ -170,9 +180,16 @@ func RegisterInstanceTools(server *mcp.Server) {
 				}
 			}
 
+			target, err := authorizedTarget(ctx, input.Name)
+			if err != nil {
+				return nil, nil, err
+			}
+			if result, err := confirmInteraction(ctx, request, "deletion of "+target); result != nil || err != nil {
+				return result, nil, err
+			}
 			stopProgress := operationProgress(ctx, request)
 			defer stopProgress()
-			result, err := openstack.DeleteInstance(ctx, input.Name)
+			result, err := openstack.DeleteInstance(ctx, target)
 			if err != nil {
 				return nil, nil, err
 			}

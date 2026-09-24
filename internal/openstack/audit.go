@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/haramj/openstack-mcp-server/internal/scope"
 	"io"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 )
 
 type AuditEvent struct {
+	Principal     string   `json:"principal,omitempty"`
 	Timestamp     string   `json:"timestamp"`
 	Source        string   `json:"source"`
 	Operation     string   `json:"operation"`
@@ -63,7 +65,17 @@ func AuditLogPath() string {
 	return auditLogPath()
 }
 
-func writeAuditEvent(event AuditEvent) {
+func scopedAuditPath(ctx context.Context) string {
+	if c, ok := scope.From(ctx); ok {
+		return c.AuditFile
+	}
+	return auditLogPath()
+}
+func writeAuditEvent(event AuditEvent) { writeAuditEventContext(context.Background(), event) }
+func writeAuditEventContext(ctx context.Context, event AuditEvent) {
+	if c, ok := scope.From(ctx); ok {
+		event.Principal = c.Principal
+	}
 	if event.Timestamp == "" {
 		event.Timestamp = time.Now().UTC().Format(time.RFC3339Nano)
 	}
@@ -71,7 +83,7 @@ func writeAuditEvent(event AuditEvent) {
 		event.Source = "openstack-mcp"
 	}
 
-	path := auditLogPath()
+	path := scopedAuditPath(ctx)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return
 	}
@@ -87,7 +99,10 @@ func writeAuditEvent(event AuditEvent) {
 }
 
 func RecordRejectedAudit(operation string, target string, destructive bool, message string) {
-	writeAuditEvent(AuditEvent{
+	RecordRejectedAuditContext(context.Background(), operation, target, destructive, message)
+}
+func RecordRejectedAuditContext(ctx context.Context, operation string, target string, destructive bool, message string) {
+	writeAuditEventContext(ctx, AuditEvent{
 		Operation:   operation,
 		Target:      target,
 		Destructive: destructive,
@@ -97,6 +112,9 @@ func RecordRejectedAudit(operation string, target string, destructive bool, mess
 }
 
 func SummarizeAgentActivity(options ActivitySummaryOptions) (*ActivitySummary, error) {
+	return SummarizeAgentActivityContext(context.Background(), options)
+}
+func SummarizeAgentActivityContext(ctx context.Context, options ActivitySummaryOptions) (*ActivitySummary, error) {
 	now := time.Now().UTC()
 	sinceHours := options.SinceHours
 	if sinceHours <= 0 {
@@ -119,10 +137,10 @@ func SummarizeAgentActivity(options ActivitySummaryOptions) (*ActivitySummary, e
 		Until:           now.Format(time.RFC3339Nano),
 		StatusCounts:    map[string]int{},
 		OperationCounts: map[string]int{},
-		AuditLogPath:    auditLogPath(),
+		AuditLogPath:    scopedAuditPath(ctx),
 	}
 
-	events, coverage, err := readAuditWindow(since, now)
+	events, coverage, err := readAuditWindowContext(ctx, since, now)
 	summary.MalformedLines = coverage.Malformed
 	summary.ScannedBytes = coverage.Bytes
 	summary.Truncated = coverage.Truncated
@@ -210,9 +228,12 @@ func readAuditEventsSince(since time.Time) ([]AuditEvent, error) {
 // A bounded tail avoids unbounded historical scans. It never assumes timestamps
 // are monotonic: concurrent commands and imported records can be out of order.
 func readAuditWindow(since, until time.Time) ([]AuditEvent, auditCoverage, error) {
+	return readAuditWindowContext(context.Background(), since, until)
+}
+func readAuditWindowContext(ctx context.Context, since, until time.Time) ([]AuditEvent, auditCoverage, error) {
 	auditCache.Lock()
 	defer auditCache.Unlock()
-	path := auditLogPath()
+	path := scopedAuditPath(ctx)
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, auditCoverage{}, err
@@ -309,7 +330,7 @@ func runAuditedOpenStackCommand(
 		event.Status = "failed"
 		event.Error = "openstack command failed"
 	}
-	writeAuditEvent(event)
+	writeAuditEventContext(ctx, event)
 
 	return output, err
 }
@@ -333,4 +354,9 @@ func runAuditedOpenStackJSON[T any](
 	}
 
 	return nil
+}
+
+// RecordMCPAudit records method identity/outcome, never request arguments or responses.
+func RecordMCPAudit(ctx context.Context, method, status string) {
+	writeAuditEventContext(ctx, AuditEvent{Operation: method, Status: status})
 }
